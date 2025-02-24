@@ -1,26 +1,34 @@
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
-import { supabase } from "../../src/supabase";
+import { addCarte } from "../services/api"; // Assurez-vous que l'import est correct
 
 const AddCard = ({ onCardAdded }: { onCardAdded: () => void }) => {
   const [nom, setNom] = useState("");
   const [numero, setNumero] = useState("");
 
+  // Fonction pour ajouter une carte
   const handleAddCard = async () => {
-    if (!nom || !numero) {
+    if (!nom.trim() || !numero.trim()) {
       Alert.alert("Erreur", "Tous les champs sont requis !");
       return;
     }
 
-    const { error } = await supabase.from("carte").insert([{ nom, numero }]);
+    try {
+      // Envoi de la carte via l'API
+      const newCard = await addCarte(nom, numero);
 
-    if (error) {
-      Alert.alert("Erreur", error.message);
-    } else {
-      Alert.alert("Succès", "Carte ajoutée avec succès !");
-      setNom("");
-      setNumero("");
-      onCardAdded();
+      // Vérification si l'ajout de la carte est réussi
+      if (newCard) {
+        Alert.alert("Succès", "Carte ajoutée avec succès !");
+        setNom("");
+        setNumero("");
+        onCardAdded(); // Rafraîchit la liste des cartes après l'ajout
+      } else {
+        Alert.alert("Erreur", "Impossible d'ajouter la carte.");
+      }
+    } catch (error) {
+      console.error("Erreur lors de l'ajout de la carte :", error);
+      Alert.alert("Erreur", "Une erreur est survenue lors de l'ajout.");
     }
   };
 
@@ -90,9 +98,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
-    shadowColor: "#007AFF",
+    shadowColor: "rgba(0, 122, 255, 0.3)",
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.5,
     shadowRadius: 5,
   },
   buttonText: {

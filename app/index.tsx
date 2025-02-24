@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, Alert, TouchableOpacity } from "react-native";
-import { supabase } from "../src/supabase";
+import {
+  View,
+  Text,
+  FlatList,
+  ActivityIndicator,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  TextInput,
+} from "react-native";
 import AddCard from "./components/AddCard";
+import { getCartes, deleteCarte, updateCarte } from "./services/api"; // Import des nouvelles méthodes API
 
-const App = () => {
+function App() {
   interface Carte {
     id: number;
     nom: string;
@@ -14,10 +23,9 @@ const App = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddCard, setShowAddCard] = useState(false);
-
-  const formatCardNumber = (number: string) => {
-    return number.replace(/(\d{4})/g, '$1 ').trim();
-  };
+  const [editingCard, setEditingCard] = useState<Carte | null>(null);
+  const [newNom, setNewNom] = useState("");
+  const [newNumero, setNewNumero] = useState("");
 
   useEffect(() => {
     fetchCartes();
@@ -26,54 +34,20 @@ const App = () => {
   const fetchCartes = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from("carte").select("*");
+      const data = await getCartes();
 
-      if (error) {
-        console.error("❌ Erreur Supabase :", error.message);
-        setError(error.message);
+      if (!data || data.length === 0) {
+        setError("Aucune carte trouvée.");
       } else {
-        console.log("✅ Données récupérées :", data);
         setCartes(data);
+        setError(null);
       }
     } catch (err) {
+      console.error("Erreur lors de la récupération des cartes :", err);
       setError("Une erreur est survenue lors de la récupération des cartes.");
     } finally {
       setLoading(false);
     }
-  };
-
-  const deleteCard = async (id: number) => {
-    Alert.alert(
-      "Confirm Deletion",
-      "Are you sure you want to delete this card?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase.from("carte").delete().eq("id", id);
-
-              if (error) {
-                console.error("❌ Erreur de suppression :", error.message);
-                Alert.alert("Error", "Failed to delete the card. Please try again.");
-              } else {
-                console.log("✅ Carte supprimée !");
-                setCartes(prevCartes => prevCartes.filter(carte => carte.id !== id));
-                Alert.alert("Success", "Card deleted successfully.");
-              }
-            } catch (err) {
-              console.error("❌ Unexpected error:", err);
-              Alert.alert("Error", "An unexpected error occurred while deleting the card.");
-            }
-          }
-        }
-      ]
-    );
   };
 
   const handleCardAdded = () => {
@@ -81,204 +55,213 @@ const App = () => {
     fetchCartes();
   };
 
-  const renderCard = ({ item }: { item: Carte }) => (
-    <View style={styles.card}>
-      <View style={styles.cardInner}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardType}>{item.nom}</Text>
-          <View style={styles.chipIcon} />
-        </View>
-        <Text style={styles.cardNumber}>{formatCardNumber(item.numero)}</Text>
-        <View style={styles.cardFooter}>
-          <Text style={styles.cardLabel}>VALID THRU</Text>
-          <Text style={styles.cardDate}>12/25</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => deleteCard(item.id)}
-        >
-          <Text style={styles.deleteButtonText}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  const handleDeleteCard = async (id: number) => {
+    Alert.alert("Confirmation", "Voulez-vous vraiment supprimer cette carte ?", [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: async () => {
+          await deleteCarte(id);
+          Alert.alert("Succès", "Carte supprimée avec succès !");
+          fetchCartes();
+        },
+      },
+    ]);
+  };
 
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>⚠️ {error}</Text>
-        </View>
-      </View>
-    );
-  }
+  const handleEditCard = async () => {
+    if (!newNom || !newNumero) {
+      Alert.alert("Erreur", "Tous les champs sont requis !");
+      return;
+    }
+
+    if (editingCard) {
+      await updateCarte(editingCard.id, newNom, newNumero);
+      Alert.alert("Succès", "Carte mise à jour !");
+      setEditingCard(null);
+      setNewNom("");
+      setNewNumero("");
+      fetchCartes();
+    }
+  };
+
+  const startEditing = (carte: Carte) => {
+    setEditingCard(carte);
+    setNewNom(carte.nom);
+    setNewNumero(carte.numero);
+  };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>My Banking Cards</Text>
+      <Text style={styles.title}>💳 Mes Cartes Bancaires</Text>
+
       <TouchableOpacity
         style={styles.addButton}
         onPress={() => setShowAddCard(true)}
       >
-        <Text style={styles.addButtonText}>+ Add New Card</Text>
+        <Text style={styles.addButtonText}>+ Ajouter une carte</Text>
       </TouchableOpacity>
-      
+
       {showAddCard && <AddCard onCardAdded={handleCardAdded} />}
+
+      {editingCard && (
+        <View style={styles.editContainer}>
+          <Text style={styles.editTitle}>Modifier la carte</Text>
+          <TextInput
+            style={styles.input}
+            value={newNom}
+            onChangeText={setNewNom}
+            placeholder="Nom"
+            placeholderTextColor="#777"
+          />
+          <TextInput
+            style={styles.input}
+            value={newNumero}
+            onChangeText={setNewNumero}
+            keyboardType="numeric"
+            placeholder="Numéro"
+            placeholderTextColor="#777"
+          />
+          <TouchableOpacity style={styles.saveButton} onPress={handleEditCard}>
+            <Text style={styles.saveButtonText}>✅ Enregistrer</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#6366F1" />
-          <Text style={styles.loadingText}>Loading your cards...</Text>
+          <Text style={styles.loadingText}>Chargement des cartes...</Text>
         </View>
       ) : cartes.length > 0 ? (
         <FlatList
           data={cartes}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={renderCard}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <Text style={styles.cardType}>{item.nom}</Text>
+              <Text style={styles.cardNumber}>{item.numero}</Text>
+
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => startEditing(item)}
+                >
+                  <Text style={styles.buttonText}>✏ Modifier</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDeleteCard(item.id)}
+                >
+                  <Text style={styles.buttonText}>🗑 Supprimer</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No cards found</Text>
-          <Text style={styles.emptySubtext}>Add a new card to get started</Text>
+          <Text style={styles.emptyText}>Aucune carte enregistrée.</Text>
         </View>
       )}
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     padding: 16,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontWeight: "700",
+    color: "#1F2937",
     marginBottom: 20,
     marginTop: 40,
-  },
-  card: {
-    backgroundColor: '#6366F1',
-    borderRadius: 16,
-    padding: 20,
-    marginVertical: 8,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  cardInner: {
-    gap: 16,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardType: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  chipIcon: {
-    width: 40,
-    height: 30,
-    backgroundColor: '#FFD700',
-    borderRadius: 6,
-  },
-  cardNumber: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '500',
-    letterSpacing: 2,
-    marginTop: 20,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  cardLabel: {
-    color: '#E5E7EB',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  cardDate: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    backgroundColor: '#EF4444',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignSelf: 'flex-end',
-    marginTop: 12,
-  },
-  deleteButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+    textAlign: "center",
   },
   addButton: {
-    backgroundColor: '#6366F1',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 24,
+    backgroundColor: "#6366F1",
+    padding: 12,
+    borderRadius: 10,
+    alignSelf: "center",
   },
   addButtonText: {
-    color: '#ffffff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-  errorContainer: {
-    backgroundColor: '#FEE2E2',
+  card: {
+    backgroundColor: "#FFF",
     padding: 16,
     borderRadius: 12,
-    marginTop: 20,
+    marginVertical: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  errorText: {
-    color: '#DC2626',
+  cardType: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  cardNumber: {
     fontSize: 16,
-    textAlign: 'center',
+    color: "#555",
+    marginTop: 8,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
   },
-  loadingText: {
-    color: '#6366F1',
-    fontSize: 16,
-    fontWeight: '500',
+  editButton: {
+    backgroundColor: "#F59E0B",
+    padding: 8,
+    borderRadius: 8,
   },
-  listContainer: {
-    paddingBottom: 24,
+  deleteButton: {
+    backgroundColor: "#EF4444",
+    padding: 8,
+    borderRadius: 8,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+  buttonText: {
+    color: "#fff",
+    fontSize: 14,
   },
-  emptyText: {
+  editContainer: {
+    padding: 16,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  editTitle: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#4B5563',
+    fontWeight: "700",
+    marginBottom: 12,
   },
-  emptySubtext: {
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 12,
     fontSize: 16,
-    color: '#6B7280',
+    marginBottom: 8,
+  },
+  saveButton: {
+    backgroundColor: "#10B981",
+    padding: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 16,
   },
 });
 
